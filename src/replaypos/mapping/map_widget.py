@@ -50,10 +50,18 @@ map.addControl(new maplibregl.ScaleControl({{
 }}), 'bottom-left');
 
 let currentSourceId = null;
+let openseamapVisible = true;
 
 new QWebChannel(qt.webChannelTransport, function(channel) {{
   window.backend = channel.objects.backend;
 }});
+
+function toggleOpenSeaMap(visible) {{
+  openseamapVisible = visible;
+  if (map.getLayer('openseamap-layer')) {{
+    map.setLayoutProperty('openseamap-layer', 'visibility', visible ? 'visible' : 'none');
+  }}
+}}
 
 function loadTrack(geojson) {{
   if (currentSourceId) {{
@@ -166,6 +174,20 @@ map.on('load', function() {{
   endSvg += '<rect x="9" y="9" width="6" height="6" fill="white" rx="1"/></svg>';
   endEl.innerHTML = endSvg;
   map.addImage('marker-end', endEl, {{ sdf: false, pixelRatio: 2 }});
+
+  // ── OpenSeaMap raster overlay ──────────────────────────────────
+  map.addSource('openseamap', {{
+    type: 'raster',
+    tiles: ['https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'],
+    tileSize: 256,
+    attribution: '&copy; <a href="https://www.openseamap.org">OpenSeaMap</a>'
+  }});
+  map.addLayer({{
+    id: 'openseamap-layer',
+    type: 'raster',
+    source: 'openseamap',
+    paint: {{ 'raster-opacity': 0.7 }}
+  }});
 }});
 </script>
 </body>
@@ -284,6 +306,11 @@ class MapWidget(QWidget):
         """Remove all track layers from the map."""
         self._track = None
         self._web_view.page().runJavaScript("clearMap()")
+
+    def set_openseamap_visible(self, visible: bool) -> None:
+        """Show or hide the OpenSeaMap raster overlay."""
+        js = f"toggleOpenSeaMap({'true' if visible else 'false'})"
+        self._web_view.page().runJavaScript(js)
 
     @pyqtSlot(float, float)
     def on_map_click(self, lat: float, lon: float) -> None:

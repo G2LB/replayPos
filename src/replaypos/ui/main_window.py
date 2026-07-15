@@ -87,6 +87,14 @@ class MainWindow(QMainWindow):
         self._show_timeline_action.triggered.connect(self._toggle_timeline)
         view_menu.addAction(self._show_timeline_action)
 
+        view_menu.addSeparator()
+
+        self._show_openseamap_action = QAction("OpenSeaMap &Overlay", self)
+        self._show_openseamap_action.setCheckable(True)
+        self._show_openseamap_action.setChecked(True)
+        self._show_openseamap_action.triggered.connect(self._toggle_openseamap)
+        view_menu.addAction(self._show_openseamap_action)
+
         help_menu = menu_bar.addMenu("&Help")
 
         about_action = QAction("&About", self)
@@ -187,6 +195,9 @@ class MainWindow(QMainWindow):
             self._stack.setCurrentWidget(self._map_widget)
         else:
             self._stack.setCurrentWidget(self._empty_label)
+
+    def _toggle_openseamap(self, visible: bool) -> None:
+        self._map_widget.set_openseamap_visible(visible)
 
     def _on_about(self) -> None:
         from PyQt6.QtWidgets import QMessageBox

@@ -33,7 +33,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("ReplayPos")
         self.setMinimumSize(1024, 700)
 
-        self._current_track: Track | None = None
+        self._full_track: Track | None = None     # original unfiltered track
+        self._current_track: Track | None = None  # currently displayed (may be filtered)
 
         self._playback = PlaybackController(self)
         self._playback.position_changed.connect(self._on_position_changed)
@@ -139,6 +140,15 @@ class MainWindow(QMainWindow):
         self._fit_action.triggered.connect(self._on_fit_track)
         self._fit_action.setEnabled(False)
 
+        # ── day filter ──
+        toolbar.addSeparator()
+        toolbar.addWidget(QLabel(" Day: "))
+        self._day_combo = QComboBox()
+        self._day_combo.setMinimumWidth(110)
+        self._day_combo.currentTextChanged.connect(self._on_day_changed)
+        self._day_combo.setEnabled(False)
+        toolbar.addWidget(self._day_combo)
+
     # ── dock widgets ──────────────────────────────────────────────
 
     def _build_docks(self) -> None:
@@ -174,6 +184,39 @@ class MainWindow(QMainWindow):
             self._load_track(wizard.result_track)
 
     def _load_track(self, track: Track) -> None:
+        self._full_track = track
+        self._populate_day_combo(track)
+        # Apply the currently selected day filter (default: first day)
+        if self._day_combo.count() > 1:
+            self._on_day_changed(self._day_combo.currentText())
+        else:
+            self._apply_filtered_track(track)
+
+    def _populate_day_combo(self, track: Track) -> None:
+        """Fill the day combo with unique dates from *track* plus an 'All dates' entry."""
+        self._day_combo.blockSignals(True)
+        self._day_combo.clear()
+        self._day_combo.addItem("All dates")
+        for d in track.unique_dates:
+            self._day_combo.addItem(d.isoformat())
+        self._day_combo.blockSignals(False)
+        self._day_combo.setCurrentIndex(self._day_combo.count() > 1)  # select first date if any
+
+    def _on_day_changed(self, text: str) -> None:
+        """Filter the track to the selected day and reload all views."""
+        if not self._full_track:
+            return
+        if text == "All dates" or not text:
+            self._apply_filtered_track(self._full_track)
+        else:
+            try:
+                filtered = self._full_track.filter_by_date(text)
+                self._apply_filtered_track(filtered)
+            except ValueError:
+                pass
+
+    def _apply_filtered_track(self, track: Track) -> None:
+        """Reload map, timeline and playback with the given (possibly filtered) track."""
         self._current_track = track
         self._playback.load_track(track)
         self._map_widget.load_track(track)
@@ -259,6 +302,7 @@ class MainWindow(QMainWindow):
         self._stop_action.setEnabled(has_track)
         self._speed_combo.setEnabled(has_track)
         self._fit_action.setEnabled(has_track)
+        self._day_combo.setEnabled(has_track and self._day_combo.count() > 1)
 
 
 def main() -> None:

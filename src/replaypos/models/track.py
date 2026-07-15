@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -53,6 +53,31 @@ class Track(BaseModel):
     @property
     def end_time(self) -> datetime | None:
         return self.points[-1].timestamp if self.points else None
+
+    @property
+    def unique_dates(self) -> list[date]:
+        """Sorted list of unique dates covered by this track's points."""
+        seen: set[date] = {p.timestamp.date() for p in self.points}
+        return sorted(seen)
+
+    def filter_by_date(self, target: date | str) -> Track:
+        """Return a new Track with only points whose timestamp matches *target*.
+
+        Parameters
+        ----------
+        target : date or str
+            A ``datetime.date`` or a ``'YYYY-MM-DD'`` string.
+
+        Returns
+        -------
+        Track
+            A copy with filtered (re-indexed) points and empty chapters/events.
+        """
+        if isinstance(target, str):
+            target = date.fromisoformat(target)
+        filtered = [p for p in self.points if p.timestamp.date() == target]
+        reindexed = [p.model_copy(update={"index": i}) for i, p in enumerate(filtered)]
+        return self.model_copy(update={"points": reindexed, "chapters": [], "events": []})
 
     def get_point_at(self, timestamp: datetime) -> TrackPoint | None:
         lo, hi = 0, len(self.points) - 1

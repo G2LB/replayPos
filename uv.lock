@@ -1079,6 +1079,14 @@ reporting = [
     { name = "weasyprint" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-qt" },
+    { name = "ruff" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.20" },
@@ -1102,6 +1110,14 @@ requires-dist = [
     { name = "weasyprint", marker = "extra == 'reporting'", specifier = ">=61" },
 ]
 provides-extras = ["dev", "reporting", "export"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pytest-asyncio", specifier = ">=1.4.0" },
+    { name = "pytest-qt", specifier = ">=4.5.0" },
+    { name = "ruff", specifier = ">=0.15.21" },
+]
 
 [[package]]
 name = "ruff"

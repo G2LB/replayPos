@@ -12,6 +12,16 @@
 - `uv run ruff check src/` — all checks passed
 - All 30 core dependencies installed (PyQt6, SQLAlchemy, pyproj, etc.)
 
+## 2026-07-15 — Database layer (SQLite + SQLAlchemy)
+
+- `database/models.py` — 7 ORM tabellen (projects, tracks, track_points, events, chapters, project_objects, settings)
+- `database/database.py` — DatabaseService met WAL mode, PRAGMA optimalisaties, settings get/set
+- `database/repository.py` — Repository pattern: ProjectRepository, TrackRepository (bulk INSERT 1000/batch), EventRepository, ChapterRepository
+- `settings/settings_manager.py` — SettingsManager via database
+- `docs/SQLite101.md` — Referentie gids met SQL + Python voorbeelden
+- 13 database tests — all passing
+- Performance: 2500 punten bulk insert <1s, yield_per voor streaming
+
 ## 2026-07-15 — Pydantic data models
 
 Implemented all core Pydantic v2 models:

@@ -165,22 +165,40 @@ function clearMap() {{
 }}
 
 map.on('load', function() {{
-  const size = 36;
-  const startEl = document.createElement('div');
-  var startSvg = '<svg width="' + size + '" height="' + size + '"';
-  startSvg += ' viewBox="0 0 24 24" fill="#22c55e">';
-  startSvg += '<circle cx="12" cy="12" r="9"/>';
-  startSvg += '<path d="M12 7l4 8H8z" fill="#fff"/></svg>';
-  startEl.innerHTML = startSvg;
-  map.addImage('marker-start', startEl, {{ sdf: false, pixelRatio: 2 }});
+  const S = 36;
 
-  const endEl = document.createElement('div');
-  var endSvg = '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24"';
-  endSvg += ' fill="#ef4444">';
-  endSvg += '<circle cx="12" cy="12" r="9"/>';
-  endSvg += '<rect x="9" y="9" width="6" height="6" fill="white" rx="1"/></svg>';
-  endEl.innerHTML = endSvg;
-  map.addImage('marker-end', endEl, {{ sdf: false, pixelRatio: 2 }});
+  function makeMarkerIcon(fillColor, symbol) {{
+    const c = document.createElement('canvas');
+    c.width = S;
+    c.height = S;
+    const ctx = c.getContext('2d');
+
+    // translucent halo
+    ctx.beginPath();
+    ctx.arc(S/2, S/2, S/2 - 1, 0, 2 * Math.PI);
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+
+    // white symbol
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    if (symbol === 'start') {{
+      // play triangle
+      ctx.moveTo(13, 9);
+      ctx.lineTo(25, 18);
+      ctx.lineTo(13, 27);
+    }} else {{
+      // stop square
+      ctx.rect(11, 11, 14, 14);
+    }}
+    ctx.closePath();
+    ctx.fill();
+
+    return ctx.getImageData(0, 0, S, S);
+  }}
+
+  map.addImage('marker-start', makeMarkerIcon('#22c55e', 'start'), {{ sdf: false, pixelRatio: 2 }});
+  map.addImage('marker-end',   makeMarkerIcon('#ef4444', 'end'),   {{ sdf: false, pixelRatio: 2 }});
 
   // ── OpenSeaMap raster overlay ──────────────────────────────────
   map.addSource('openseamap', {{

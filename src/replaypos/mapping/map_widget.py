@@ -21,6 +21,8 @@ _HTML_TEMPLATE = """\
 <link href="{lib_css}" rel="stylesheet" />
 <script src="{lib_js}"></script>
 <style>
+  @import url('https://cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.3.0/css/nerd-fonts-generated.css');
+
   body {{ margin: 0; padding: 0; }}
   #map {{ width: 100vw; height: 100vh; }}
   .north-arrow {{
@@ -30,11 +32,25 @@ _HTML_TEMPLATE = """\
     justify-content: center; font-size: 20px; pointer-events: none;
     box-shadow: 0 1px 4px rgba(0,0,0,0.3); z-index: 10;
   }}
+  .time-display {{
+    position: absolute; bottom: 60px; left: 12px;
+    background: rgba(0,0,0,0.72); color: #fff;
+    padding: 6px 12px; border-radius: 6px;
+    font-family: 'Nerd Fonts', 'Segoe UI', sans-serif;
+    font-size: 14px; pointer-events: none;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.5); z-index: 10;
+    white-space: nowrap;
+  }}
+  .time-display .nf {{ margin-right: 6px; font-size: 16px; }}
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div class="north-arrow">&#x2B06;</div>
+<div class="time-display" id="timeDisplay">
+  <span class="nf nf-md-timer_marker"></span>
+  <span id="timeLabel">--:--:--</span>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/qwebchannel@1/dist/qwebchannel.js"></script>
 <script>
 const map = new maplibregl.Map({{
@@ -71,6 +87,10 @@ function toggleOpenSeaMap(visible) {{
   if (map.getLayer('openseamap-layer')) {{
     map.setLayoutProperty('openseamap-layer', 'visibility', visible ? 'visible' : 'none');
   }}
+}}
+
+function updateTimeDisplay(datetimeStr) {{
+  document.getElementById('timeLabel').textContent = datetimeStr;
 }}
 
 function loadTrack(data) {{
@@ -496,6 +516,11 @@ class MapWidget(QWidget):
         """Remove all track layers from the map."""
         self._track = None
         self._web_view.page().runJavaScript("clearMap()")
+
+    def set_time_display(self, datetime_str: str) -> None:
+        """Show the current replay datetime on the map overlay."""
+        js = f"updateTimeDisplay({json.dumps(datetime_str)})"
+        self._web_view.page().runJavaScript(js)
 
     def set_openseamap_visible(self, visible: bool) -> None:
         """Show or hide the OpenSeaMap raster overlay."""

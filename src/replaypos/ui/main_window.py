@@ -306,9 +306,10 @@ class MainWindow(QMainWindow):
         self._playback.seek_to_position(fraction)
 
     def _on_position_changed(self, point: TrackPoint) -> None:
-        """Update map highlight, progress trail, and timeline when playback advances."""
+        """Update map highlight, progress trail, timer, and timeline when playback advances."""
         self._map_widget.highlight_point(point)
         self._map_widget.append_progress_point([point.position.longitude, point.position.latitude])
+        self._map_widget.set_time_display(point.timestamp.isoformat(timespec="seconds"))
 
         # Advance interval marker if we've passed the next interval point
         if self._interval_list and self._current_interval_idx < len(self._interval_list):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import date
+from datetime import date, timedelta
 
 from loguru import logger
 from PyQt6.QtCore import Qt
@@ -35,8 +35,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("ReplayPos")
         self.setMinimumSize(1024, 700)
 
-        self._full_track: Track | None = None     # original unfiltered track
+        self._full_track: Track | None = None  # original unfiltered track
         self._current_track: Track | None = None  # currently displayed (may be filtered)
+        self._current_interval_idx: int = 0  # index into the 6-min interval list
+        self._interval_list: list[dict] = []  # cached intervals for the active filter
 
         self._playback = PlaybackController(self)
         self._playback.position_changed.connect(self._on_position_changed)
@@ -116,11 +118,11 @@ class MainWindow(QMainWindow):
         toolbar.setObjectName("PlaybackToolbar")
         toolbar.setMovable(False)
 
-        self._play_action = toolbar.addAction("\u25B6 Play")
+        self._play_action = toolbar.addAction("\u25b6 Play")
         self._play_action.triggered.connect(self._on_play_pause)
         self._play_action.setEnabled(False)
 
-        self._stop_action = toolbar.addAction("\u25A0 Stop")
+        self._stop_action = toolbar.addAction("\u25a0 Stop")
         self._stop_action.triggered.connect(self._on_stop)
         self._stop_action.setEnabled(False)
 
@@ -128,9 +130,9 @@ class MainWindow(QMainWindow):
 
         self._speed_combo = QComboBox()
         self._speed_combo.addItems(
-            ["0.25\u00D7", "0.5\u00D7", "1\u00D7", "2\u00D7", "4\u00D7", "8\u00D7", "16\u00D7"]
+            ["0.25\u00d7", "0.5\u00d7", "1\u00d7", "2\u00d7", "4\u00d7", "8\u00d7", "16\u00d7"]
         )
-        self._speed_combo.setCurrentText("1\u00D7")
+        self._speed_combo.setCurrentText("1\u00d7")
         self._speed_combo.currentTextChanged.connect(self._on_speed_changed)
         self._speed_combo.setEnabled(False)
         toolbar.addWidget(QLabel(" Speed: "))
@@ -138,7 +140,7 @@ class MainWindow(QMainWindow):
 
         # ── fit-to-track button ──
         toolbar.addSeparator()
-        self._fit_action = toolbar.addAction("\U0001F30D Fit")
+        self._fit_action = toolbar.addAction("\U0001f30d Fit")
         self._fit_action.triggered.connect(self._on_fit_track)
         self._fit_action.setEnabled(False)
 
@@ -214,9 +216,7 @@ class MainWindow(QMainWindow):
 
         # 2. Update playback + timeline with the filtered point set
         if not selected:
-            empty = self._full_track.model_copy(
-                update={"points": [], "chapters": [], "events": []}
-            )
+            empty = self._full_track.model_copy(update={"points": [], "chapters": [], "events": []})
             self._apply_filtered_track(empty, reload_map=False)
             return
 
@@ -227,9 +227,32 @@ class MainWindow(QMainWindow):
         except ValueError:
             pass
 
-    def _apply_filtered_track(
-        self, track: Track, reload_map: bool = False
-    ) -> None:
+    @staticmethod
+    def _compute_intervals(track: Track, interval_minutes: int = 6) -> list[dict]:
+        """Find track points at *interval_minutes* time intervals.
+
+        Returns a list of ``{"coords": [lng, lat], "time": str, "point_idx": int}``.
+        """
+        if not track.points:
+            return []
+        intervals: list[dict] = []
+        secs = interval_minutes * 60
+        start = track.points[0].timestamp
+        next_mark = start + timedelta(seconds=secs)
+
+        for pt in track.points:
+            if pt.timestamp >= next_mark:
+                intervals.append(
+                    {
+                        "coords": [pt.position.longitude, pt.position.latitude],
+                        "time": pt.timestamp.isoformat(timespec="minutes"),
+                        "point_idx": pt.index,
+                    }
+                )
+                next_mark += timedelta(seconds=secs)
+        return intervals
+
+    def _apply_filtered_track(self, track: Track, reload_map: bool = False) -> None:
         """Load *track* into playback and timeline.
 
         Parameters
@@ -241,16 +264,19 @@ class MainWindow(QMainWindow):
             (used only on initial load; day toggles skip this).
         """
         self._current_track = track
+        self._current_interval_idx = 0
+        self._interval_list = self._compute_intervals(track)
+
         self._playback.load_track(track)
         self._timeline_widget.load_track(track)
+        self._map_widget.load_intervals(self._interval_list)
+        self._map_widget.reset_progress()
         if reload_map:
             self._map_widget.load_track(track)
             self._map_widget.fit_bounds()
         self._update_ui_state()
         pt_count = len(track.points)
-        self._status_label.setText(
-            f"Track: {track.name or 'Unnamed'} \u2014 {pt_count:,} points"
-        )
+        self._status_label.setText(f"Track: {track.name or 'Unnamed'} \u2014 {pt_count:,} points")
         logger.info("Loaded track '{}' with {:,} points", track.name, pt_count)
 
     # ── playback actions ──────────────────────────────────────────
@@ -265,7 +291,7 @@ class MainWindow(QMainWindow):
         self._playback.stop()
 
     def _on_speed_changed(self, text: str) -> None:
-        speed_str = text.replace("\u00D7", "").strip()
+        speed_str = text.replace("\u00d7", "").strip()
         try:
             speed = float(speed_str)
             self._playback.set_speed(speed)
@@ -280,8 +306,18 @@ class MainWindow(QMainWindow):
         self._playback.seek_to_position(fraction)
 
     def _on_position_changed(self, point: TrackPoint) -> None:
-        """Update map highlight and timeline when playback advances."""
+        """Update map highlight, progress trail, and timeline when playback advances."""
         self._map_widget.highlight_point(point)
+        self._map_widget.append_progress_point([point.position.longitude, point.position.latitude])
+
+        # Advance interval marker if we've passed the next interval point
+        if self._interval_list and self._current_interval_idx < len(self._interval_list):
+            next_iv = self._interval_list[self._current_interval_idx]
+            idx = self._playback.current_index
+            if idx >= next_iv["point_idx"]:
+                self._map_widget.highlight_interval(next_iv["coords"])
+                self._current_interval_idx += 1
+
         if self._current_track and self._current_track.points:
             total = len(self._current_track.points) - 1
             idx = self._playback.current_index
@@ -292,7 +328,7 @@ class MainWindow(QMainWindow):
             )
 
     def _on_playing_changed(self, playing: bool) -> None:
-        self._play_action.setText("\u23F8 Pause" if playing else "\u25B6 Play")
+        self._play_action.setText("\u23f8 Pause" if playing else "\u25b6 Play")
 
     # ── view actions ──────────────────────────────────────────────
 

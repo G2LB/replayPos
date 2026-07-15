@@ -52,6 +52,8 @@ map.addControl(new maplibregl.ScaleControl({{
 let currentSourceId = null;
 let dayLayerIds = [];
 let openseamapVisible = true;
+let progressCoords = [];
+let intervalData = [];
 
 function initQWebChannel() {{
   if (typeof QWebChannel === 'undefined') {{
@@ -95,6 +97,22 @@ function loadTrack(data) {{
       }}
     }});
   }}
+
+  // ── progress line (cumulative trail, grows during playback) ─────
+  map.addSource('progress-line', {{
+    type: 'geojson',
+    data: {{ type: 'FeatureCollection', features: [] }}
+  }});
+  map.addLayer({{
+    id: 'progress-line-layer',
+    type: 'line',
+    source: 'progress-line',
+    paint: {{
+      'line-color': '#fbbf24',
+      'line-width': 5,
+      'line-opacity': 0.9
+    }}
+  }});
 
   // ── start / end markers ─────────────────────────────────────────
   function addMarker(coords, imgId, layerId) {{
@@ -173,6 +191,97 @@ function highlightPoint(coords) {{
   }}
 }}
 
+function resetProgress() {{
+  progressCoords = [];
+  intervalData = [];
+  ['progress-line', 'interval-markers', 'current-interval'].forEach(function(id) {{
+    try {{ map.getSource(id).setData({{ type: 'FeatureCollection', features: [] }}); }}
+    catch(e) {{}}
+  }});
+}}
+
+function appendProgressPoint(coord) {{
+  progressCoords.push(coord);
+  if (map.getSource('progress-line')) {{
+    map.getSource('progress-line').setData({{
+      type: 'FeatureCollection',
+      features: [{{
+        type: 'Feature',
+        geometry: {{ type: 'LineString', coordinates: progressCoords }},
+        properties: {{}}
+      }}]
+    }});
+  }}
+}}
+
+function loadIntervals(intervals) {{
+  intervalData = intervals || [];
+  // remove old layers
+  ['interval-markers-layer', 'current-interval-layer'].forEach(function(id) {{
+    try {{ map.removeLayer(id); }} catch(e) {{}}
+  }});
+  ['interval-markers', 'current-interval'].forEach(function(id) {{
+    try {{ map.removeSource(id); }} catch(e) {{}}
+  }});
+  if (!intervalData.length) return;
+
+  // interval dots
+  var features = intervalData.map(function(iv) {{
+    return {{
+      type: 'Feature',
+      geometry: {{ type: 'Point', coordinates: iv.coords }},
+      properties: {{ time: iv.time || '' }}
+    }};
+  }});
+  map.addSource('interval-markers', {{
+    type: 'geojson',
+    data: {{ type: 'FeatureCollection', features: features }}
+  }});
+  map.addLayer({{
+    id: 'interval-markers-layer',
+    type: 'circle',
+    source: 'interval-markers',
+    paint: {{
+      'circle-radius': 5,
+      'circle-color': '#fbbf24',
+      'circle-opacity': 0.7,
+      'circle-stroke-width': 1,
+      'circle-stroke-color': '#fff'
+    }}
+  }});
+
+  // highlighted (current) interval — starts empty
+  map.addSource('current-interval', {{
+    type: 'geojson',
+    data: {{ type: 'FeatureCollection', features: [] }}
+  }});
+  map.addLayer({{
+    id: 'current-interval-layer',
+    type: 'circle',
+    source: 'current-interval',
+    paint: {{
+      'circle-radius': 10,
+      'circle-color': '#fbbf24',
+      'circle-opacity': 1.0,
+      'circle-stroke-width': 3,
+      'circle-stroke-color': '#fff'
+    }}
+  }});
+}}
+
+function highlightInterval(coords) {{
+  if (map.getSource('current-interval')) {{
+    map.getSource('current-interval').setData({{
+      type: 'FeatureCollection',
+      features: [{{
+        type: 'Feature',
+        geometry: {{ type: 'Point', coordinates: coords }},
+        properties: {{}}
+      }}]
+    }});
+  }}
+}}
+
 function clearMap() {{
   if (currentSourceId) {{
     const sid = currentSourceId;
@@ -190,8 +299,16 @@ function clearMap() {{
     currentSourceId = null;
     dayLayerIds = [];
   }}
+  // progress + intervals
+  try {{ map.removeLayer('progress-line-layer'); }} catch(e) {{}}
+  try {{ map.removeSource('progress-line'); }} catch(e) {{}}
+  try {{ map.removeLayer('interval-markers-layer'); }} catch(e) {{}}
+  try {{ map.removeSource('interval-markers'); }} catch(e) {{}}
+  try {{ map.removeLayer('current-interval-layer'); }} catch(e) {{}}
+  try {{ map.removeSource('current-interval'); }} catch(e) {{}}
   try {{ map.removeLayer('highlight-point-layer'); }} catch(e) {{}}
   try {{ map.removeSource('highlight-point'); }} catch(e) {{}}
+  resetProgress();
 }}
 
 map.on('load', function() {{
@@ -355,6 +472,25 @@ class MapWidget(QWidget):
         coords = [point.position.longitude, point.position.latitude]
         js = f"highlightPoint({json.dumps(coords)})"
         self._web_view.page().runJavaScript(js)
+
+    def load_intervals(self, intervals: list[dict]) -> None:
+        """Set 6-minute interval markers on the map."""
+        js = f"loadIntervals({json.dumps(intervals)})"
+        self._web_view.page().runJavaScript(js)
+
+    def append_progress_point(self, coord: list[float]) -> None:
+        """Append one coordinate to the cumulative trail."""
+        js = f"appendProgressPoint({json.dumps(coord)})"
+        self._web_view.page().runJavaScript(js)
+
+    def highlight_interval(self, coords: list[float]) -> None:
+        """Highlight the current 6-minute interval marker."""
+        js = f"highlightInterval({json.dumps(coords)})"
+        self._web_view.page().runJavaScript(js)
+
+    def reset_progress(self) -> None:
+        """Clear the cumulative trail and interval highlights."""
+        self._web_view.page().runJavaScript("resetProgress()")
 
     def clear(self) -> None:
         """Remove all track layers from the map."""

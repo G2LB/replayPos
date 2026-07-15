@@ -178,7 +178,7 @@ map.on('load', function() {{
   // ── OpenSeaMap raster overlay ──────────────────────────────────
   map.addSource('openseamap', {{
     type: 'raster',
-    tiles: ['https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'],
+    tiles: ['https://tiles.openseamap.org/seamark/{{z}}/{{x}}/{{y}}.png'],
     tileSize: 256,
     attribution: '&copy; <a href="https://www.openseamap.org">OpenSeaMap</a>'
   }});

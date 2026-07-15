@@ -99,9 +99,9 @@ def init_nerd_fonts() -> bool:
         return True
 
     # ── system check ─────────────────────────────────────────────
-    db = QFontDatabase()
+    families: list[str] = QFontDatabase.families()
     for family in _SYSTEM_FAMILIES:
-        if family in db.families():
+        if family in families:
             _font_family = family
             logger.info("Using system-installed Nerd Font: %s", family)
             return True

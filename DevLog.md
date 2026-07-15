@@ -75,3 +75,44 @@ Implemented all core Pydantic v2 models:
   - SVG marker images for start (green triangle) and end (red square)
 - App now starts: `uv run python -m replaypos` shows main window with map
 - All 74 existing tests still pass; ruff lint clean
+
+## 2026-07-15 — Day filter + per-day map layers + track colors (Stap 5.3)
+
+- **Per-day track colors** — GeoJSON `stroke` property per day alternates `#3b82f6` / `#93c5fd`, JS data-driven `line-color: ['get', 'stroke']`
+- **`DayFilterWidget`** (`ui/day_filter.py`) — QToolButton + QMenu with checkable QActions per date, "All dates" master toggle, "Hide stationary days" toggle, italic for stationary days, `selection_changed` signal
+- **`Track.stationary_dates`** — property that finds dates where all points have SOG/speed == 0
+- **`Track.filter_by_dates(targets)`** — cheap O(n) filter (no per-point `model_copy`)
+- **Per-day JS layers** — `_track_to_geojson_by_day()` creates one source+layer per day; `loadTrack` instantiates them all; `toggleDay(dateStr, visible)` sets layer visibility instantly (no GeoJSON re-upload)
+- **`MapWidget.set_day_visible()`** — Python bridge for `toggleDay()`
+
+## 2026-07-15 — Cumulative progress trail + 6-minute interval markers
+
+- **JS progress trail** — `progressCoords` array, `appendProgressPoint()`, `resetProgress()` — amber line (`#fbbf24`) grows one coord per playback tick
+- **JS interval markers** — `loadIntervals()` drops yellow dot markers every 6 minutes on the map; `highlightInterval()` pulses the current interval
+- **Python `MapWidget`** — `load_intervals()`, `append_progress_point()`, `highlight_interval()`, `reset_progress()` bridge methods
+- **`MainWindow._compute_intervals()`** — walks filtered track points, emits `{coords, time, point_idx}` at every 6-minute clock boundary
+- **`_on_position_changed`** — appends progress point each tick + advances interval highlight when `point_idx` is crossed
+- **Time-of-replay overlay** on map — `nf-md-timer_marker` Nerd Font icon + ISO datetime in bottom-left overlay; `updateTimeDisplay()` JS + `MapWidget.set_time_display()` Python
+- **`clearMap()`** now cleans up all progress/interval layers
+
+## 2026-07-15 — Nerd Font icons in PyQt UI
+
+- **`src/replaypos/ui/nerd_font.py`** — new module:
+  - `init_nerd_fonts()` — checks system, local cache, then downloads NerdFontsSymbolsOnly.zip from GitHub releases v3.3.0, extracts TTF, and loads via `QFontDatabase.addApplicationFont()`
+  - `nerd_icon(css_class, size, color) → QIcon` — renders glyph on transparent pixmap
+  - `nerd_font(size) → QFont` — for direct widget use
+  - Multi-strategy fallback: system → cached TTF → direct CDN TTF → zip download
+  - Font validation with magic-byte check (`\x00\x01\x00\x00`, `OTTO`, `true`, `ttcf`)
+  - Logging at every step; graceful fallback to empty icons if font unavailable
+- **MainWindow** — menu/toolbar icons: File→Import CSV (`nf-fae-file_import`), Export to DB (`nf-md-database_export`), Play/Pause (`nf-md-play`/`nf-md-pause`), Stop (`nf-md-stop`), Fit (`nf-md-map_marker`)
+- **`_on_export_db`** — placeholder method for future database export
+
+## 2026-07-15 — 120× playback speed + timeline interval markers
+
+- **PlaybackController rewritten** — fixed 16ms `PreciseTimer` tick; `_compute_advance()` calculates multi-point skip per tick (`round(speed × tick_sec / avg_step_seconds)`). No upper speed limit; at 120×: ~6 min data per 3 real seconds
+- **`_average_step_seconds()`** — caches mean inter-point delta for accurate advance calculation
+- **Speed combo** — added 60× and 120× options
+- **TimelineWidget** — `load_intervals()`, `set_current_interval()`, `clear()` manage `_intervals` list; `paintEvent` draws gray tick marks above the track bar at each 6-minute boundary, active interval in amber `#fbbf24`
+- **MainWindow._apply_filtered_track** — passes `_interval_list` to timeline
+- **MainWindow._on_position_changed** — calls `timeline.set_current_interval()` in sync with map `highlight_interval()`
+- All 74 tests passing; ruff lint + format clean

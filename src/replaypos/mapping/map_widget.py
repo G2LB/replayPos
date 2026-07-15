@@ -88,7 +88,7 @@ function loadTrack(geojson) {{
     source: sid,
     filter: ['==', '$type', 'LineString'],
     paint: {{
-      'line-color': '#3b82f6',
+      'line-color': ['get', 'stroke'],
       'line-width': 3,
       'line-opacity': 0.9
     }}
@@ -220,34 +220,45 @@ map.on('load', function() {{
 """
 
 
+_DAY_COLORS = ("#3b82f6", "#93c5fd")  # blue / lighter-blue alternating palette
+
+
 def _track_to_geojson(track: Track) -> dict[str, Any]:
     """Convert a Track into a GeoJSON FeatureCollection.
 
     Returns a FeatureCollection with:
-      - One LineString feature for the full track path
+      - One LineString feature per day, each with a ``stroke`` property
+        that alternates between blue and lighter-blue.
       - One Point feature for the start (with property marker='start')
       - One Point feature for the end   (with property marker='end')
     """
     if not track.points:
         return {"type": "FeatureCollection", "features": []}
 
-    coords: list[list[float]] = []
+    features: list[dict[str, Any]] = []
+
+    # ── group points by calendar day ───────────────────────────────
+    from collections import defaultdict
+
+    by_date: dict[str, list] = defaultdict(list)
     for tp in track.points:
-        lon, lat = tp.position.longitude, tp.position.latitude
-        coords.append([lon, lat])
+        by_date[tp.timestamp.strftime("%Y-%m-%d")].append(tp)
 
-    features: list[dict[str, Any]] = [
-        {
-            "type": "Feature",
-            "geometry": {"type": "LineString", "coordinates": coords},
-            "properties": {
-                "name": track.name or "Track",
-                "point_count": len(track.points),
-            },
-        }
-    ]
+    for i, (date_str, pts) in enumerate(sorted(by_date.items())):
+        coords = [[p.position.longitude, p.position.latitude] for p in pts]
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {"type": "LineString", "coordinates": coords},
+                "properties": {
+                    "name": date_str,
+                    "stroke": _DAY_COLORS[i % len(_DAY_COLORS)],
+                    "point_count": len(pts),
+                },
+            }
+        )
 
-    # Start marker
+    # ── start / end markers ────────────────────────────────────────
     first = track.points[0]
     features.append(
         {
@@ -260,7 +271,6 @@ def _track_to_geojson(track: Track) -> dict[str, Any]:
         }
     )
 
-    # End marker
     last = track.points[-1]
     features.append(
         {

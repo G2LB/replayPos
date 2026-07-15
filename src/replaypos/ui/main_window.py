@@ -21,7 +21,9 @@ from PyQt6.QtWidgets import (
 
 from replaypos.importers.csv_wizard import CsvImportWizard
 from replaypos.mapping.map_widget import MapWidget
-from replaypos.models import Track
+from replaypos.models import Track, TrackPoint
+from replaypos.playback import PlaybackController
+from replaypos.timeline import TimelineWidget
 
 
 class MainWindow(QMainWindow):
@@ -33,6 +35,10 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1024, 700)
 
         self._current_track: Track | None = None
+
+        self._playback = PlaybackController(self)
+        self._playback.position_changed.connect(self._on_position_changed)
+        self._playback.playing_changed.connect(self._on_playing_changed)
 
         self._build_central_widget()
         self._build_menu_bar()
@@ -109,9 +115,11 @@ class MainWindow(QMainWindow):
         toolbar.setMovable(False)
 
         self._play_action = toolbar.addAction("\u25B6 Play")
+        self._play_action.triggered.connect(self._on_play_pause)
         self._play_action.setEnabled(False)
 
         self._stop_action = toolbar.addAction("\u25A0 Stop")
+        self._stop_action.triggered.connect(self._on_stop)
         self._stop_action.setEnabled(False)
 
         toolbar.addSeparator()
@@ -121,6 +129,7 @@ class MainWindow(QMainWindow):
             ["0.25\u00D7", "0.5\u00D7", "1\u00D7", "2\u00D7", "4\u00D7", "8\u00D7", "16\u00D7"]
         )
         self._speed_combo.setCurrentText("1\u00D7")
+        self._speed_combo.currentTextChanged.connect(self._on_speed_changed)
         self._speed_combo.setEnabled(False)
         toolbar.addWidget(QLabel(" Speed: "))
         toolbar.addWidget(self._speed_combo)
@@ -139,13 +148,13 @@ class MainWindow(QMainWindow):
 
         self._timeline_dock = QDockWidget("Timeline", self)
         self._timeline_dock.setObjectName("TimelineDock")
-        self._timeline_container = QWidget()
-        self._timeline_layout = QVBoxLayout(self._timeline_container)
-        self._timeline_placeholder = QLabel("Timeline — coming soon")
-        self._timeline_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._timeline_placeholder.setStyleSheet("color: #888;")
-        self._timeline_layout.addWidget(self._timeline_placeholder)
-        self._timeline_dock.setWidget(self._timeline_container)
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self._timeline_widget = TimelineWidget()
+        self._timeline_widget.seek_requested.connect(self._on_timeline_seek)
+        layout.addWidget(self._timeline_widget)
+        self._timeline_dock.setWidget(container)
         self._timeline_dock.setFeatures(
             QDockWidget.DockWidgetFeature.DockWidgetClosable
             | QDockWidget.DockWidgetFeature.DockWidgetMovable
@@ -162,7 +171,7 @@ class MainWindow(QMainWindow):
         self._status_label = QLabel("Ready")
         status.addPermanentWidget(self._status_label)
 
-    # ── actions ───────────────────────────────────────────────────
+    # ── file actions ──────────────────────────────────────────────
 
     def _on_import_csv(self) -> None:
         wizard = CsvImportWizard(self)
@@ -171,8 +180,10 @@ class MainWindow(QMainWindow):
 
     def _load_track(self, track: Track) -> None:
         self._current_track = track
+        self._playback.load_track(track)
         self._map_widget.load_track(track)
         self._map_widget.fit_bounds()
+        self._timeline_widget.load_track(track)
         self._stack.setCurrentWidget(self._map_widget)
         self._update_ui_state()
         pt_count = len(track.points)
@@ -180,6 +191,45 @@ class MainWindow(QMainWindow):
             f"Track: {track.name or 'Unnamed'} \u2014 {pt_count:,} points"
         )
         logger.info("Loaded track '{}' with {:,} points", track.name, pt_count)
+
+    # ── playback actions ──────────────────────────────────────────
+
+    def _on_play_pause(self) -> None:
+        if self._playback.is_playing:
+            self._playback.pause()
+        else:
+            self._playback.play()
+
+    def _on_stop(self) -> None:
+        self._playback.stop()
+
+    def _on_speed_changed(self, text: str) -> None:
+        speed_str = text.replace("\u00D7", "").strip()
+        try:
+            speed = float(speed_str)
+            self._playback.set_speed(speed)
+        except ValueError:
+            pass
+
+    def _on_timeline_seek(self, fraction: float) -> None:
+        self._playback.seek_to_position(fraction)
+
+    def _on_position_changed(self, point: TrackPoint) -> None:
+        """Update map highlight and timeline when playback advances."""
+        self._map_widget.highlight_point(point)
+        if self._current_track and self._current_track.points:
+            total = len(self._current_track.points) - 1
+            idx = self._playback.current_index
+            self._timeline_widget.set_position(idx / max(total, 1))
+            self._status_label.setText(
+                f"Point {idx:,}/{len(self._current_track.points):,}  "
+                f"({point.position.latitude:.5f}, {point.position.longitude:.5f})"
+            )
+
+    def _on_playing_changed(self, playing: bool) -> None:
+        self._play_action.setText("\u23F8 Pause" if playing else "\u25B6 Play")
+
+    # ── view actions ──────────────────────────────────────────────
 
     def _toggle_map(self, visible: bool) -> None:
         self._map_dock.setVisible(visible)

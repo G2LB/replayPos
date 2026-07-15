@@ -5,6 +5,7 @@ from replaypos.mapping.assets.icons import (
     get_icon,
     get_marker_html,
 )
+from replaypos.mapping.map_widget import MapWidget
 
 __all__ = [
     "ICON_MAP",
@@ -12,4 +13,5 @@ __all__ = [
     "NerdIcon",
     "get_icon",
     "get_marker_html",
+    "MapWidget",
 ]

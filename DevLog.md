@@ -56,3 +56,22 @@ Implemented all core Pydantic v2 models:
 - **CI/CD** — GitHub Actions workflow (`.github/workflows/ci.yml`) with Ruff lint + PyTest on push/PR
 - **38 CSV import tests** — all passing (74 total, all green)
 - **GitHub repo created** — `https://github.com/G2LB/replayPos` (public), `develop` branch pushed
+
+## 2026-07-15 — Main window & Map widget (Stap 5, steps 1+2)
+
+- **`ui/main_window.py`** — `MainWindow(QMainWindow)` with:
+  - File menu: Import CSV (launches `CsvImportWizard`), Exit
+  - View menu: toggle Map/Timeline docks
+  - Toolbar: Play/Pause/Stop buttons + Speed combo (disabled until track loaded)
+  - Dock areas: Map (right), Timeline (bottom, placeholder)
+  - Status bar with track info
+  - `main()` entry point — creates `QApplication`, shows window, runs event loop
+- **`mapping/map_widget.py`** — `MapWidget` embedding MapLibre GL via `QWebEngineView`:
+  - MapLibre GL JS v4 from CDN (no bundling)
+  - `QWebChannel` for Python ↔ JavaScript bidirectional communication
+  - Dark matter basemap (CartoDB), navigation controls, scale bar, north arrow
+  - `load_track()` — converts `Track` → GeoJSON FeatureCollection (LineString + start/end markers)
+  - `fit_bounds()`, `highlight_point()`, `clear()` methods
+  - SVG marker images for start (green triangle) and end (red square)
+- App now starts: `uv run python -m replaypos` shows main window with map
+- All 74 existing tests still pass; ruff lint clean

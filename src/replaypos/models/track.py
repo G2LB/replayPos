@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -59,6 +60,29 @@ class Track(BaseModel):
         """Sorted list of unique dates covered by this track's points."""
         seen: set[date] = {p.timestamp.date() for p in self.points}
         return sorted(seen)
+
+    @staticmethod
+    def _is_stationary(pt: TrackPoint) -> bool:
+        nav = pt.navigation
+        if nav is None:
+            return True
+        sog_zero = nav.sog is None or nav.sog == 0.0
+        speed_zero = nav.speed is None or nav.speed == 0.0
+        return sog_zero and speed_zero
+
+    @property
+    def stationary_dates(self) -> set[date]:
+        """Dates where every point has SOG/speed == 0 (or both absent)."""
+        by_date: dict[date, list[TrackPoint]] = defaultdict(list)
+        for p in self.points:
+            by_date[p.timestamp.date()].append(p)
+        return {d for d, pts in by_date.items() if all(self._is_stationary(p) for p in pts)}
+
+    def filter_by_dates(self, targets: set[date]) -> Track:
+        """Return a new Track with only points whose date is in *targets*."""
+        filtered = [p for p in self.points if p.timestamp.date() in targets]
+        reindexed = [p.model_copy(update={"index": i}) for i, p in enumerate(filtered)]
+        return self.model_copy(update={"points": reindexed, "chapters": [], "events": []})
 
     def filter_by_date(self, target: date | str) -> Track:
         """Return a new Track with only points whose timestamp matches *target*.

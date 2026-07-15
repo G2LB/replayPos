@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import date
 
 from loguru import logger
 from PyQt6.QtCore import Qt
@@ -23,6 +24,7 @@ from replaypos.mapping.map_widget import MapWidget
 from replaypos.models import Track, TrackPoint
 from replaypos.playback import PlaybackController
 from replaypos.timeline import TimelineWidget
+from replaypos.ui.day_filter import DayFilterWidget
 
 
 class MainWindow(QMainWindow):
@@ -142,12 +144,9 @@ class MainWindow(QMainWindow):
 
         # ── day filter ──
         toolbar.addSeparator()
-        toolbar.addWidget(QLabel(" Day: "))
-        self._day_combo = QComboBox()
-        self._day_combo.setMinimumWidth(110)
-        self._day_combo.currentTextChanged.connect(self._on_day_changed)
-        self._day_combo.setEnabled(False)
-        toolbar.addWidget(self._day_combo)
+        self._day_filter = DayFilterWidget()
+        self._day_filter.selection_changed.connect(self._on_day_filter_changed)
+        toolbar.addWidget(self._day_filter)
 
     # ── dock widgets ──────────────────────────────────────────────
 
@@ -185,35 +184,36 @@ class MainWindow(QMainWindow):
 
     def _load_track(self, track: Track) -> None:
         self._full_track = track
-        self._populate_day_combo(track)
-        # Apply the currently selected day filter (default: first day)
-        if self._day_combo.count() > 1:
-            self._on_day_changed(self._day_combo.currentText())
-        else:
-            self._apply_filtered_track(track)
+        # Build point-counts map and stationary set
+        counts: dict[date, int] = {}
+        for p in track.points:
+            d = p.timestamp.date()
+            counts[d] = counts.get(d, 0) + 1
+        stationary = track.stationary_dates
 
-    def _populate_day_combo(self, track: Track) -> None:
-        """Fill the day combo with unique dates from *track* plus an 'All dates' entry."""
-        self._day_combo.blockSignals(True)
-        self._day_combo.clear()
-        self._day_combo.addItem("All dates")
-        for d in track.unique_dates:
-            self._day_combo.addItem(d.isoformat())
-        self._day_combo.blockSignals(False)
-        self._day_combo.setCurrentIndex(self._day_combo.count() > 1)  # select first date if any
+        self._day_filter.load_dates(track.unique_dates, stationary, counts)
+        self._on_day_filter_changed()
 
-    def _on_day_changed(self, text: str) -> None:
-        """Filter the track to the selected day and reload all views."""
+    def _on_day_filter_changed(self) -> None:
+        """Rebuild the displayed track from the day-filter selection."""
         if not self._full_track:
             return
-        if text == "All dates" or not text:
-            self._apply_filtered_track(self._full_track)
-        else:
-            try:
-                filtered = self._full_track.filter_by_date(text)
-                self._apply_filtered_track(filtered)
-            except ValueError:
-                pass
+        selected = self._day_filter.selected_dates()
+        if not selected:
+            # Nothing selected — show empty placeholder but don't crash
+            self._apply_filtered_track(
+                self._full_track.model_copy(
+                    update={"points": [], "chapters": [], "events": []}
+                )
+            )
+            return
+
+        try:
+            targets: set[date] = {date.fromisoformat(s) for s in selected}
+            filtered = self._full_track.filter_by_dates(targets)
+            self._apply_filtered_track(filtered)
+        except ValueError:
+            pass
 
     def _apply_filtered_track(self, track: Track) -> None:
         """Reload map, timeline and playback with the given (possibly filtered) track."""
@@ -302,7 +302,6 @@ class MainWindow(QMainWindow):
         self._stop_action.setEnabled(has_track)
         self._speed_combo.setEnabled(has_track)
         self._fit_action.setEnabled(has_track)
-        self._day_combo.setEnabled(has_track and self._day_combo.count() > 1)
 
 
 def main() -> None:

@@ -79,10 +79,13 @@ class Track(BaseModel):
         return {d for d, pts in by_date.items() if all(self._is_stationary(p) for p in pts)}
 
     def filter_by_dates(self, targets: set[date]) -> Track:
-        """Return a new Track with only points whose date is in *targets*."""
+        """Return a new Track with only points whose date is in *targets*.
+
+        No per-point ``model_copy`` — the filtered list references existing
+        ``TrackPoint`` objects, making this a cheap O(n) filter.
+        """
         filtered = [p for p in self.points if p.timestamp.date() in targets]
-        reindexed = [p.model_copy(update={"index": i}) for i, p in enumerate(filtered)]
-        return self.model_copy(update={"points": reindexed, "chapters": [], "events": []})
+        return self.model_copy(update={"points": filtered, "chapters": [], "events": []})
 
     def filter_by_date(self, target: date | str) -> Track:
         """Return a new Track with only points whose timestamp matches *target*.

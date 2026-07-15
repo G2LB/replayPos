@@ -184,45 +184,68 @@ class MainWindow(QMainWindow):
 
     def _load_track(self, track: Track) -> None:
         self._full_track = track
-        # Build point-counts map and stationary set
+
+        # Load ALL days into the map as separate JS layers
+        self._map_widget.load_track(track)
+        self._map_widget.fit_bounds()
+        self._stack.setCurrentWidget(self._map_widget)
+
+        # Populate the day filter widget
         counts: dict[date, int] = {}
         for p in track.points:
             d = p.timestamp.date()
             counts[d] = counts.get(d, 0) + 1
         stationary = track.stationary_dates
-
         self._day_filter.load_dates(track.unique_dates, stationary, counts)
+
+        # Apply initial filter (all moving days selected by default)
         self._on_day_filter_changed()
 
     def _on_day_filter_changed(self) -> None:
-        """Rebuild the displayed track from the day-filter selection."""
+        """Respond to day-filter changes (fast path: JS layer toggle only)."""
         if not self._full_track:
             return
-        selected = self._day_filter.selected_dates()
+        selected = set(self._day_filter.selected_dates())
+
+        # 1. Toggle day layers in JS — instant, no GeoJSON transfer
+        for d in self._full_track.unique_dates:
+            iso = d.isoformat()
+            self._map_widget.set_day_visible(iso, iso in selected)
+
+        # 2. Update playback + timeline with the filtered point set
         if not selected:
-            # Nothing selected — show empty placeholder but don't crash
-            self._apply_filtered_track(
-                self._full_track.model_copy(
-                    update={"points": [], "chapters": [], "events": []}
-                )
+            empty = self._full_track.model_copy(
+                update={"points": [], "chapters": [], "events": []}
             )
+            self._apply_filtered_track(empty, reload_map=False)
             return
 
         try:
-            targets: set[date] = {date.fromisoformat(s) for s in selected}
+            targets = {date.fromisoformat(s) for s in selected}
             filtered = self._full_track.filter_by_dates(targets)
-            self._apply_filtered_track(filtered)
+            self._apply_filtered_track(filtered, reload_map=False)
         except ValueError:
             pass
 
-    def _apply_filtered_track(self, track: Track) -> None:
-        """Reload map, timeline and playback with the given (possibly filtered) track."""
+    def _apply_filtered_track(
+        self, track: Track, reload_map: bool = False
+    ) -> None:
+        """Load *track* into playback and timeline.
+
+        Parameters
+        ----------
+        track :
+            The (possibly filtered) track to use.
+        reload_map :
+            If True, also reload the full GeoJSON into the map
+            (used only on initial load; day toggles skip this).
+        """
         self._current_track = track
         self._playback.load_track(track)
-        self._map_widget.load_track(track)
-        self._map_widget.fit_bounds()
         self._timeline_widget.load_track(track)
-        self._stack.setCurrentWidget(self._map_widget)
+        if reload_map:
+            self._map_widget.load_track(track)
+            self._map_widget.fit_bounds()
         self._update_ui_state()
         pt_count = len(track.points)
         self._status_label.setText(

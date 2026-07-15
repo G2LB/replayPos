@@ -50,6 +50,7 @@ map.addControl(new maplibregl.ScaleControl({{
 }}), 'bottom-left');
 
 let currentSourceId = null;
+let dayLayerIds = [];
 let openseamapVisible = true;
 
 function initQWebChannel() {{
@@ -70,66 +71,86 @@ function toggleOpenSeaMap(visible) {{
   }}
 }}
 
-function loadTrack(geojson) {{
-  if (currentSourceId) {{
-    try {{ map.removeLayer(currentSourceId + '-line'); }} catch(e) {{}}
-    try {{ map.removeLayer(currentSourceId + '-start'); }} catch(e) {{}}
-    try {{ map.removeLayer(currentSourceId + '-end'); }} catch(e) {{}}
-    try {{ map.removeSource(currentSourceId); }} catch(e) {{}}
-  }}
+function loadTrack(data) {{
+  clearMap();
   const sid = 'track-' + Date.now();
   currentSourceId = sid;
+  dayLayerIds = [];
 
-  map.addSource(sid, {{ type: 'geojson', data: geojson }});
+  // ── one source + layer per day ──────────────────────────────────
+  for (const [dateStr, geojson] of Object.entries(data.days)) {{
+    const srcId = sid + '-src-' + dateStr;
+    const layId = sid + '-lay-' + dateStr;
+    dayLayerIds.push(layId);
 
-  map.addLayer({{
-    id: sid + '-line',
-    type: 'line',
-    source: sid,
-    filter: ['==', '$type', 'LineString'],
-    paint: {{
-      'line-color': ['get', 'stroke'],
-      'line-width': 3,
-      'line-opacity': 0.9
-    }}
-  }});
-
-  map.addLayer({{
-    id: sid + '-start',
-    type: 'symbol',
-    source: sid,
-    filter: ['==', ['get', 'marker'], 'start'],
-    layout: {{
-      'icon-image': 'marker-start',
-      'icon-size': 1.2,
-      'icon-allow-overlap': true
-    }}
-  }});
-
-  map.addLayer({{
-    id: sid + '-end',
-    type: 'symbol',
-    source: sid,
-    filter: ['==', ['get', 'marker'], 'end'],
-    layout: {{
-      'icon-image': 'marker-end',
-      'icon-size': 1.2,
-      'icon-allow-overlap': true
-    }}
-  }});
-
-  const bounds = new maplibregl.LngLatBounds();
-  if (geojson.features) {{
-    geojson.features.forEach(function(f) {{
-      if (f.geometry.type === 'Point') {{
-        bounds.extend(f.geometry.coordinates);
-      }} else if (f.geometry.type === 'LineString') {{
-        f.geometry.coordinates.forEach(function(c) {{ bounds.extend(c); }});
+    map.addSource(srcId, {{ type: 'geojson', data: geojson }});
+    map.addLayer({{
+      id: layId,
+      type: 'line',
+      source: srcId,
+      paint: {{
+        'line-color': ['get', 'stroke'],
+        'line-width': 3,
+        'line-opacity': 0.9
       }}
     }});
   }}
+
+  // ── start / end markers ─────────────────────────────────────────
+  function addMarker(coords, imgId, layerId) {{
+    const srcId = sid + '-' + layerId;
+    map.addSource(srcId, {{
+      type: 'geojson',
+      data: {{ type: 'FeatureCollection', features: [{{
+        type: 'Feature',
+        geometry: {{ type: 'Point', coordinates: coords }},
+        properties: {{}}
+      }}] }}
+    }});
+    map.addLayer({{
+      id: layerId,
+      type: 'symbol',
+      source: srcId,
+      layout: {{
+        'icon-image': imgId,
+        'icon-size': 1.2,
+        'icon-allow-overlap': true
+      }}
+    }});
+  }}
+  if (data.markers && data.markers.start) {{
+    addMarker(data.markers.start, 'marker-start', 'marker-start-' + sid);
+  }}
+  if (data.markers && data.markers.end) {{
+    addMarker(data.markers.end, 'marker-end', 'marker-end-' + sid);
+  }}
+
+  // ── fit bounds over ALL days ────────────────────────────────────
+  const bounds = new maplibregl.LngLatBounds();
+  for (const geojson of Object.values(data.days)) {{
+    if (geojson.features) {{
+      geojson.features.forEach(function(f) {{
+        if (f.geometry && f.geometry.coordinates) {{
+          if (f.geometry.type === 'Point') {{
+            bounds.extend(f.geometry.coordinates);
+          }} else if (f.geometry.type === 'LineString') {{
+            f.geometry.coordinates.forEach(function(c) {{ bounds.extend(c); }});
+          }}
+        }}
+      }});
+    }}
+  }}
   if (!bounds.isEmpty()) {{
     map.fitBounds(bounds, {{ padding: 60, maxZoom: 16 }});
+  }}
+}}
+
+function toggleDay(dateStr, visible) {{
+  const sid = currentSourceId;
+  if (!sid) return;
+  const layId = sid + '-lay-' + dateStr;
+  if (map.getLayer(layId)) {{
+    map.setLayoutProperty(layId, 'visibility', visible ? 'visible' : 'none');
   }}
 }}
 
@@ -154,11 +175,20 @@ function highlightPoint(coords) {{
 
 function clearMap() {{
   if (currentSourceId) {{
-    try {{ map.removeLayer(currentSourceId + '-line'); }} catch(e) {{}}
-    try {{ map.removeLayer(currentSourceId + '-start'); }} catch(e) {{}}
-    try {{ map.removeLayer(currentSourceId + '-end'); }} catch(e) {{}}
-    try {{ map.removeSource(currentSourceId); }} catch(e) {{}}
+    const sid = currentSourceId;
+    // remove per-day layers + sources
+    for (const layId of dayLayerIds) {{
+      try {{
+        const srcId = sid + '-src-' + layId.replace(sid + '-lay-', '');
+        map.removeLayer(layId);
+        try {{ map.removeSource(srcId); }} catch(e) {{}}
+      }} catch(e) {{}}
+    }}
+    // remove markers
+    try {{ map.removeLayer('marker-start-' + sid); }} catch(e) {{}}
+    try {{ map.removeLayer('marker-end-' + sid); }} catch(e) {{}}
     currentSourceId = null;
+    dayLayerIds = [];
   }}
   try {{ map.removeLayer('highlight-point-layer'); }} catch(e) {{}}
   try {{ map.removeSource('highlight-point'); }} catch(e) {{}}
@@ -223,21 +253,19 @@ map.on('load', function() {{
 _DAY_COLORS = ("#3b82f6", "#93c5fd")  # blue / lighter-blue alternating palette
 
 
-def _track_to_geojson(track: Track) -> dict[str, Any]:
-    """Convert a Track into a GeoJSON FeatureCollection.
+def _track_to_geojson_by_day(track: Track) -> dict[str, Any]:
+    """Convert a Track into per-day GeoJSON bundles for the JS map.
 
-    Returns a FeatureCollection with:
-      - One LineString feature per day, each with a ``stroke`` property
-        that alternates between blue and lighter-blue.
-      - One Point feature for the start (with property marker='start')
-      - One Point feature for the end   (with property marker='end')
+    Returns
+    -------
+    dict
+        ``{"days": {date_str: FeatureCollection, …},
+          "markers": {"start": [lon, lat], "end": [lon, lat]}}``
     """
+    result: dict[str, Any] = {"days": {}, "markers": {}}
     if not track.points:
-        return {"type": "FeatureCollection", "features": []}
+        return result
 
-    features: list[dict[str, Any]] = []
-
-    # ── group points by calendar day ───────────────────────────────
     from collections import defaultdict
 
     by_date: dict[str, list] = defaultdict(list)
@@ -246,44 +274,26 @@ def _track_to_geojson(track: Track) -> dict[str, Any]:
 
     for i, (date_str, pts) in enumerate(sorted(by_date.items())):
         coords = [[p.position.longitude, p.position.latitude] for p in pts]
-        features.append(
-            {
-                "type": "Feature",
-                "geometry": {"type": "LineString", "coordinates": coords},
-                "properties": {
-                    "name": date_str,
-                    "stroke": _DAY_COLORS[i % len(_DAY_COLORS)],
-                    "point_count": len(pts),
-                },
-            }
-        )
+        result["days"][date_str] = {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "LineString", "coordinates": coords},
+                    "properties": {
+                        "name": date_str,
+                        "stroke": _DAY_COLORS[i % len(_DAY_COLORS)],
+                        "point_count": len(pts),
+                    },
+                }
+            ],
+        }
 
-    # ── start / end markers ────────────────────────────────────────
     first = track.points[0]
-    features.append(
-        {
-            "type": "Feature",
-            "geometry": {
-                "type": "Point",
-                "coordinates": [first.position.longitude, first.position.latitude],
-            },
-            "properties": {"marker": "start", "label": "Start"},
-        }
-    )
-
     last = track.points[-1]
-    features.append(
-        {
-            "type": "Feature",
-            "geometry": {
-                "type": "Point",
-                "coordinates": [last.position.longitude, last.position.latitude],
-            },
-            "properties": {"marker": "end", "label": "End"},
-        }
-    )
-
-    return {"type": "FeatureCollection", "features": features}
+    result["markers"]["start"] = [first.position.longitude, first.position.latitude]
+    result["markers"]["end"] = [last.position.longitude, last.position.latitude]
+    return result
 
 
 class MapWidget(QWidget):
@@ -316,10 +326,19 @@ class MapWidget(QWidget):
     # ── public API ────────────────────────────────────────────────
 
     def load_track(self, track: Track) -> None:
-        """Load a track onto the map, replacing any previous track."""
+        """Load a track onto the map, replacing any previous track.
+
+        Creates one MapLibre source+layer per day in JS so that
+        individual days can be toggled on/off without re-sending data.
+        """
         self._track = track
-        geojson = _track_to_geojson(track)
-        js = f"loadTrack({json.dumps(geojson)})"
+        data = _track_to_geojson_by_day(track)
+        js = f"loadTrack({json.dumps(data)})"
+        self._web_view.page().runJavaScript(js)
+
+    def set_day_visible(self, date_str: str, visible: bool) -> None:
+        """Show or hide a single day's layer without reloading the full track."""
+        js = f"toggleDay({json.dumps(date_str)}, {'true' if visible else 'false'})"
         self._web_view.page().runJavaScript(js)
 
     def fit_bounds(self) -> None:

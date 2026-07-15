@@ -5,7 +5,6 @@ from typing import Any
 
 from PyQt6.QtCore import QUrl, pyqtSlot
 from PyQt6.QtWebChannel import QWebChannel
-from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from replaypos.models import Track, TrackPoint
@@ -239,6 +238,9 @@ class MapWidget(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        # Deferred import: QWebEngineView must be imported after QApplication exists
+        from PyQt6.QtWebEngineWidgets import QWebEngineView
 
         self._web_view = QWebEngineView()
         self._channel = QWebChannel()

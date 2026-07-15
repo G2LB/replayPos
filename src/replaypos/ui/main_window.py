@@ -4,6 +4,7 @@ import sys
 
 from loguru import logger
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -59,23 +60,38 @@ class MainWindow(QMainWindow):
         menu_bar: QMenuBar = self.menuBar()
 
         file_menu = menu_bar.addMenu("&File")
-        file_menu.addAction("Import &CSV...", self._on_import_csv, "Ctrl+I")
+
+        import_action = QAction("Import &CSV...", self)
+        import_action.setShortcut(QKeySequence("Ctrl+I"))
+        import_action.triggered.connect(self._on_import_csv)
+        file_menu.addAction(import_action)
+
         file_menu.addSeparator()
-        file_menu.addAction("E&xit", self.close, "Ctrl+Q")
+
+        exit_action = QAction("E&xit", self)
+        exit_action.setShortcut(QKeySequence("Ctrl+Q"))
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
 
         view_menu = menu_bar.addMenu("&View")
-        self._show_map_action = view_menu.addAction("&Map")
+
+        self._show_map_action = QAction("&Map", self)
         self._show_map_action.setCheckable(True)
         self._show_map_action.setChecked(True)
         self._show_map_action.triggered.connect(self._toggle_map)
+        view_menu.addAction(self._show_map_action)
 
-        self._show_timeline_action = view_menu.addAction("&Timeline")
+        self._show_timeline_action = QAction("&Timeline", self)
         self._show_timeline_action.setCheckable(True)
         self._show_timeline_action.setChecked(True)
         self._show_timeline_action.triggered.connect(self._toggle_timeline)
+        view_menu.addAction(self._show_timeline_action)
 
         help_menu = menu_bar.addMenu("&Help")
-        help_menu.addAction("&About", self._on_about)
+
+        about_action = QAction("&About", self)
+        about_action.triggered.connect(self._on_about)
+        help_menu.addAction(about_action)
 
     # ── toolbar ───────────────────────────────────────────────────
 
@@ -192,6 +208,8 @@ class MainWindow(QMainWindow):
 
 def main() -> None:
     """Application entry point — create QApplication, show MainWindow, run event loop."""
+    # Must be set before QApplication to allow QWebEngineView import
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts, True)
     app = QApplication(sys.argv)
     app.setApplicationName("ReplayPos")
     app.setOrganizationName("ReplayPos")

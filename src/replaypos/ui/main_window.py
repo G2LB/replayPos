@@ -143,7 +143,10 @@ class MainWindow(QMainWindow):
 
         self._speed_combo = QComboBox()
         self._speed_combo.addItems(
-            ["0.25\u00d7", "0.5\u00d7", "1\u00d7", "2\u00d7", "4\u00d7", "8\u00d7", "16\u00d7"]
+            [
+                "0.25\u00d7", "0.5\u00d7", "1\u00d7", "2\u00d7",
+                "4\u00d7", "8\u00d7", "16\u00d7", "60\u00d7", "120\u00d7",
+            ]
         )
         self._speed_combo.setCurrentText("1\u00d7")
         self._speed_combo.currentTextChanged.connect(self._on_speed_changed)

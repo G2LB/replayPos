@@ -1,12 +1,22 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QObject, QTimer, pyqtSignal
+from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
 
 from replaypos.models import Track, TrackPoint
 
+# Fixed tick interval (ms).  On Windows the default clock resolution
+# is ~15 ms, so 16 ms gives the best consistent rate.
+_TICK_MS = 16
+
 
 class PlaybackController(QObject):
-    """Drives track playback with configurable speed and position signals."""
+    """Drives track playback with configurable speed and position signals.
+
+    At each tick (every ``_TICK_MS`` ms) we advance enough points to
+    match the requested *data‑time / real‑time* ratio.  This means the
+    controller works correctly at any speed, even 120× (≈6 min data per
+    3 real seconds).
+    """
 
     position_changed = pyqtSignal(object)  # TrackPoint
     playing_changed = pyqtSignal(bool)
@@ -19,7 +29,9 @@ class PlaybackController(QObject):
         self._speed: float = 1.0
         self._is_playing: bool = False
         self._timer = QTimer(self)
+        self._timer.setTimerType(Qt.TimerType.PreciseTimer)  # type: ignore[attr-defined]
         self._timer.timeout.connect(self._tick)
+        self._avg_step_s: float = 1.0  # cached average step in seconds
 
     # ── public API ────────────────────────────────────────────────
 
@@ -44,6 +56,7 @@ class PlaybackController(QObject):
     def load_track(self, track: Track) -> None:
         """Load a new track for playback."""
         self._track = track
+        self._avg_step_s = _average_step_seconds(track)
         self.stop()
 
     def play(self) -> None:
@@ -53,7 +66,7 @@ class PlaybackController(QObject):
         if self._current_index >= len(self._track.points) - 1:
             self._current_index = 0
         self._is_playing = True
-        self._timer.start(self._compute_interval())
+        self._timer.start(_TICK_MS)
         self.playing_changed.emit(True)
 
     def pause(self) -> None:
@@ -72,10 +85,9 @@ class PlaybackController(QObject):
             self.position_changed.emit(self._track.points[0])
 
     def set_speed(self, speed: float) -> None:
-        """Set playback speed multiplier (0.25 – 16)."""
-        self._speed = max(0.25, min(speed, 16.0))
-        if self._is_playing:
-            self._timer.setInterval(self._compute_interval())
+        """Set playback speed multiplier (no upper limit)."""
+        self._speed = max(0.25, speed)
+        # No timer restart needed — _tick calculates advance per tick
 
     def seek_to_index(self, index: int) -> None:
         """Jump to a specific point index."""
@@ -93,31 +105,42 @@ class PlaybackController(QObject):
 
     # ── internals ─────────────────────────────────────────────────
 
-    def _compute_interval(self) -> int:
-        """Calculate timer interval (ms) based on time delta to next point."""
-        if not self._track or len(self._track.points) < 2:
-            return 100
-        n = len(self._track.points)
-        # Use average step duration for smoother playback
-        total_secs = (
-            self._track.points[-1].timestamp - self._track.points[0].timestamp
-        ).total_seconds()
-        avg_step_ms = (total_secs / max(n - 1, 1)) * 1000
-        adjusted = avg_step_ms / self._speed
-        return max(16, int(adjusted))
+    def _compute_advance(self) -> int:
+        """Return how many points to skip per tick at current speed."""
+        tick_sec = _TICK_MS / 1000.0
+        # At speed 120 we want to consume 120 data-seconds per real second.
+        # Each point represents _avg_step_s data-seconds, so we need
+        #   speed * tick_sec / _avg_step_s  points per tick.
+        if self._avg_step_s <= 0:
+            return 1
+        advance = max(1, round(self._speed * tick_sec / self._avg_step_s))
+        return advance
 
     def _tick(self) -> None:
-        """Advance one step — called by QTimer."""
+        """Advance one or more points — called by QTimer every ``_TICK_MS``."""
         if not self._track or not self._track.points:
             self.stop()
             return
         n = len(self._track.points)
-        # Advance to the next point that is strictly ahead in time
-        if self._current_index < n - 1:
-            self._current_index += 1
-            self.position_changed.emit(self._track.points[self._current_index])
-            # Recalculate interval for the next step (variable-rate data)
-            self._timer.setInterval(self._compute_interval())
-        else:
+        if self._current_index >= n - 1:
             self.stop()
             self.finished.emit()
+            return
+
+        step = self._compute_advance()
+        target = min(n - 1, self._current_index + step)
+        self._current_index = target
+        self.position_changed.emit(self._track.points[target])
+
+
+# ── helper ─────────────────────────────────────────────────────────
+
+
+def _average_step_seconds(track: Track) -> float:
+    """Return the mean time between consecutive points (seconds)."""
+    if not track or len(track.points) < 2:
+        return 1.0
+    total = (
+        track.points[-1].timestamp - track.points[0].timestamp
+    ).total_seconds()
+    return total / max(len(track.points) - 1, 1)

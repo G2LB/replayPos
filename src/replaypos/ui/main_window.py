@@ -25,6 +25,7 @@ from replaypos.models import Track, TrackPoint
 from replaypos.playback import PlaybackController
 from replaypos.timeline import TimelineWidget
 from replaypos.ui.day_filter import DayFilterWidget
+from replaypos.ui.nerd_font import init_nerd_fonts, nerd_icon
 
 
 class MainWindow(QMainWindow):
@@ -72,9 +73,19 @@ class MainWindow(QMainWindow):
         file_menu = menu_bar.addMenu("&File")
 
         import_action = QAction("Import &CSV...", self)
+        import_action.setIcon(nerd_icon("nf-fae-file_import", color="#4ade80"))
         import_action.setShortcut(QKeySequence("Ctrl+I"))
         import_action.triggered.connect(self._on_import_csv)
         file_menu.addAction(import_action)
+
+        export_action = QAction("&Export to Database...", self)
+        export_action.setIcon(nerd_icon("nf-md-database_export", color="#fbbf24"))
+        export_action.setShortcut(QKeySequence("Ctrl+E"))
+        export_action.triggered.connect(self._on_export_db)
+        export_action.setEnabled(False)
+        self._export_action = export_action
+        export_action.triggered.connect(self._on_export_db)
+        file_menu.addAction(export_action)
 
         file_menu.addSeparator()
 
@@ -118,11 +129,13 @@ class MainWindow(QMainWindow):
         toolbar.setObjectName("PlaybackToolbar")
         toolbar.setMovable(False)
 
-        self._play_action = toolbar.addAction("\u25b6 Play")
+        play_icon = nerd_icon("nf-md-play", size=20, color="#4ade80")
+        self._play_action = toolbar.addAction(play_icon, "Play")
         self._play_action.triggered.connect(self._on_play_pause)
         self._play_action.setEnabled(False)
 
-        self._stop_action = toolbar.addAction("\u25a0 Stop")
+        stop_icon = nerd_icon("nf-md-stop", size=20, color="#ef4444")
+        self._stop_action = toolbar.addAction(stop_icon, "Stop")
         self._stop_action.triggered.connect(self._on_stop)
         self._stop_action.setEnabled(False)
 
@@ -140,7 +153,8 @@ class MainWindow(QMainWindow):
 
         # ── fit-to-track button ──
         toolbar.addSeparator()
-        self._fit_action = toolbar.addAction("\U0001f30d Fit")
+        fit_icon = nerd_icon("nf-md-map_marker", size=20, color="#60a5fa")
+        self._fit_action = toolbar.addAction(fit_icon, "Fit")
         self._fit_action.triggered.connect(self._on_fit_track)
         self._fit_action.setEnabled(False)
 
@@ -328,8 +342,21 @@ class MainWindow(QMainWindow):
                 f"({point.position.latitude:.5f}, {point.position.longitude:.5f})"
             )
 
+    def _on_export_db(self) -> None:
+        """Export the current track to the database (placeholder)."""
+        from PyQt6.QtWidgets import QMessageBox
+
+        QMessageBox.information(
+            self,
+            "Export to Database",
+            "Database export is not yet implemented.",
+        )
+
     def _on_playing_changed(self, playing: bool) -> None:
-        self._play_action.setText("\u23f8 Pause" if playing else "\u25b6 Play")
+        self._play_action.setText("Pause" if playing else "Play")
+        self._play_action.setIcon(
+            nerd_icon("nf-md-pause", size=20, color="#fbbf24" if playing else "#4ade80")
+        )
 
     # ── view actions ──────────────────────────────────────────────
 
@@ -362,6 +389,7 @@ class MainWindow(QMainWindow):
         self._stop_action.setEnabled(has_track)
         self._speed_combo.setEnabled(has_track)
         self._fit_action.setEnabled(has_track)
+        self._export_action.setEnabled(has_track)
 
 
 def main() -> None:
@@ -371,6 +399,9 @@ def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("ReplayPos")
     app.setOrganizationName("ReplayPos")
+
+    # Load Nerd Fonts for UI icons (downloads + caches on first run)
+    init_nerd_fonts()
 
     window = MainWindow()
     window.show()

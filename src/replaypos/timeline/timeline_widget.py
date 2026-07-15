@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QPainter, QPen
+from PyQt6.QtCore import QPointF, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import QWidget
 
 from replaypos.models import Track
@@ -175,12 +175,13 @@ class TimelineWidget(QWidget):
         painter.setBrush(_PLAYHEAD_COLOR)
         painter.setPen(QPen(QColor("#fff"), 1))
         # triangle above bar
-        tri_size = 6
-        painter.drawPolygon(
-            [(ph_x, bar_y - 2),
-             (ph_x - tri_size, bar_y - tri_size - 2),
-             (ph_x + tri_size, bar_y - tri_size - 2)],
-        )
+        tri_size = 6.0
+        triangle = QPolygonF([
+            QPointF(float(ph_x), float(bar_y) - 2.0),
+            QPointF(float(ph_x) - tri_size, float(bar_y) - tri_size - 2.0),
+            QPointF(float(ph_x) + tri_size, float(bar_y) - tri_size - 2.0),
+        ])
+        painter.drawPolygon(triangle)
         # vertical line through bar
         painter.setPen(QPen(_PLAYHEAD_COLOR, 2))
         painter.drawLine(ph_x, bar_y, ph_x, bar_y + bar_h)

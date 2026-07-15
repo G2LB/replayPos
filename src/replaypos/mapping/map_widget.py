@@ -52,9 +52,16 @@ map.addControl(new maplibregl.ScaleControl({{
 let currentSourceId = null;
 let openseamapVisible = true;
 
-new QWebChannel(qt.webChannelTransport, function(channel) {{
-  window.backend = channel.objects.backend;
-}});
+function initQWebChannel() {{
+  if (typeof QWebChannel === 'undefined') {{
+    setTimeout(initQWebChannel, 50);
+    return;
+  }}
+  new QWebChannel(qt.webChannelTransport, function(channel) {{
+    window.backend = channel.objects.backend;
+  }});
+}}
+initQWebChannel();
 
 function toggleOpenSeaMap(visible) {{
   openseamapVisible = visible;

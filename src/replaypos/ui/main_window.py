@@ -11,7 +11,6 @@ from PyQt6.QtWidgets import (
     QDockWidget,
     QLabel,
     QMainWindow,
-    QMenuBar,
     QStackedWidget,
     QStatusBar,
     QToolBar,
@@ -63,7 +62,7 @@ class MainWindow(QMainWindow):
     # ── menu bar ──────────────────────────────────────────────────
 
     def _build_menu_bar(self) -> None:
-        menu_bar: QMenuBar = self.menuBar()
+        menu_bar = self.menuBar()
 
         file_menu = menu_bar.addMenu("&File")
 
@@ -134,18 +133,17 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(QLabel(" Speed: "))
         toolbar.addWidget(self._speed_combo)
 
+        # ── fit-to-track button ──
+        toolbar.addSeparator()
+        self._fit_action = toolbar.addAction("\U0001F30D Fit")
+        self._fit_action.triggered.connect(self._on_fit_track)
+        self._fit_action.setEnabled(False)
+
     # ── dock widgets ──────────────────────────────────────────────
 
     def _build_docks(self) -> None:
-        self._map_dock = QDockWidget("Map", self)
-        self._map_dock.setObjectName("MapDock")
-        self._map_dock.setWidget(self._map_widget)
-        self._map_dock.setFeatures(
-            QDockWidget.DockWidgetFeature.DockWidgetClosable
-            | QDockWidget.DockWidgetFeature.DockWidgetMovable
-        )
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._map_dock)
-
+        # Map lives in the central QStackedWidget (not in a dock) so the
+        # stack always owns it.  The timeline is the only dock widget.
         self._timeline_dock = QDockWidget("Timeline", self)
         self._timeline_dock.setObjectName("TimelineDock")
         container = QWidget()
@@ -160,9 +158,6 @@ class MainWindow(QMainWindow):
             | QDockWidget.DockWidgetFeature.DockWidgetMovable
         )
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._timeline_dock)
-
-        # Prevent closing the map dock from hiding the map in the central stack
-        self._map_dock.visibilityChanged.connect(self._on_map_visibility_changed)
 
     # ── status bar ────────────────────────────────────────────────
 
@@ -211,6 +206,10 @@ class MainWindow(QMainWindow):
         except ValueError:
             pass
 
+    def _on_fit_track(self) -> None:
+        """Re-center the map on the current track."""
+        self._map_widget.fit_bounds()
+
     def _on_timeline_seek(self, fraction: float) -> None:
         self._playback.seek_to_position(fraction)
 
@@ -232,19 +231,13 @@ class MainWindow(QMainWindow):
     # ── view actions ──────────────────────────────────────────────
 
     def _toggle_map(self, visible: bool) -> None:
-        self._map_dock.setVisible(visible)
         if visible:
             self._stack.setCurrentWidget(self._map_widget)
+        elif self._current_track:
+            self._stack.setCurrentWidget(self._empty_label)
 
     def _toggle_timeline(self, visible: bool) -> None:
         self._timeline_dock.setVisible(visible)
-
-    def _on_map_visibility_changed(self, visible: bool) -> None:
-        self._show_map_action.setChecked(visible)
-        if visible:
-            self._stack.setCurrentWidget(self._map_widget)
-        else:
-            self._stack.setCurrentWidget(self._empty_label)
 
     def _toggle_openseamap(self, visible: bool) -> None:
         self._map_widget.set_openseamap_visible(visible)
@@ -265,6 +258,7 @@ class MainWindow(QMainWindow):
         self._play_action.setEnabled(has_track)
         self._stop_action.setEnabled(has_track)
         self._speed_combo.setEnabled(has_track)
+        self._fit_action.setEnabled(has_track)
 
 
 def main() -> None:

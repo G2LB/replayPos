@@ -5,11 +5,13 @@ from pathlib import Path
 
 from loguru import logger
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -18,12 +20,14 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QSlider,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
+    QWidget,
     QWizard,
     QWizardPage,
 )
@@ -151,14 +155,117 @@ class PageFileSelect(QWizardPage):
         return {"path": path, "delimiter": delimiter}
 
 
+# ── colour helpers ───────────────────────────────────────────────
+
+_DOT_GREEN = "#22c55e"   # required + mapped
+_DOT_BLUE = "#3b82f6"    # optional + mapped
+_DOT_GRAY = "#9ca3af"    # not mapped
+_DOT_RED = "#ef4444"     # required + not mapped
+
+
+class _DotLabel(QLabel):
+    """Small coloured circle indicator for field mapping status."""
+
+    def __init__(self, colour: str = _DOT_GRAY) -> None:
+        super().__init__()
+        self.setFixedSize(14, 14)
+        self._colour = colour
+        self._update_style()
+
+    def set_colour(self, colour: str) -> None:
+        if colour != self._colour:
+            self._colour = colour
+            self._update_style()
+
+    def _update_style(self) -> None:
+        self.setStyleSheet(
+            f"background-color: {self._colour};"
+            "border-radius: 7px;"
+            "min-width: 14px; min-height: 14px;"
+        )
+
+
+class _FieldRow(QWidget):
+    """One row in the column mapping: dot + label + combo."""
+
+    def __init__(
+        self,
+        field_key: str,
+        field_label: str,
+        required: bool,
+        on_changed: callable,
+    ) -> None:
+        super().__init__()
+        self.field_key = field_key
+        self.required = required
+        self._on_changed = on_changed
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 2, 4, 2)
+
+        self.dot = _DotLabel()
+        layout.addWidget(self.dot)
+
+        label = QLabel(field_label)
+        if required:
+            bold_font = QFont()
+            bold_font.setBold(True)
+            label.setFont(bold_font)
+        label.setMinimumWidth(130)
+        layout.addWidget(label)
+
+        self.combo = QComboBox()
+        self.combo.setMinimumWidth(200)
+        self.combo.currentTextChanged.connect(self._on_combo_changed)
+        layout.addWidget(self.combo, 1)
+
+        self.status_label = QLabel()
+        self.status_label.setMinimumWidth(80)
+        layout.addWidget(self.status_label)
+
+        self._update_status()
+
+    def _on_combo_changed(self, text: str) -> None:
+        self._update_status()
+        self._on_changed()
+
+    def _update_status(self) -> None:
+        text = self.combo.currentText()
+        mapped = text and text != "-- none --"
+
+        if self.required and not mapped:
+            self.dot.set_colour(_DOT_RED)
+            self.status_label.setText("required")
+            self.status_label.setStyleSheet("color: #ef4444; font-size: 11px;")
+        elif self.required and mapped:
+            self.dot.set_colour(_DOT_GREEN)
+            self.status_label.setText("OK")
+            self.status_label.setStyleSheet("color: #22c55e; font-size: 11px;")
+        elif mapped:
+            self.dot.set_colour(_DOT_BLUE)
+            self.status_label.setText("")
+            self.status_label.setStyleSheet("")
+        else:
+            self.dot.set_colour(_DOT_GRAY)
+            self.status_label.setText("")
+            self.status_label.setStyleSheet("")
+
+
 class PageColumnMapping(QWizardPage):
     def __init__(self):
         super().__init__()
         self.setTitle("Column Mapping")
-        self.setSubTitle("Map CSV columns to ReplayPos fields. Required fields are marked with *.")
+        self.setSubTitle(
+            "Map CSV columns to ReplayPos fields. "
+            "\U0001f7e2 required mapped  \U0001f7e5 required missing  "
+            "\U0001f535 optional mapped  \u26aa optional"
+        )
+
+        self._rows: list[_FieldRow] = []
 
         layout = QVBoxLayout()
 
+        # ── template bar ──────────────────────────────────────────
         template_row = QHBoxLayout()
         self.template_combo = QComboBox()
         self.template_combo.currentIndexChanged.connect(self._apply_template)
@@ -169,29 +276,44 @@ class PageColumnMapping(QWizardPage):
         template_row.addWidget(self.save_template_btn)
         layout.addLayout(template_row)
 
-        self.combo_widgets: dict[str, QComboBox] = {}
-        form = QFormLayout()
-        for field_key, field_label, required in ALL_FIELDS:
-            combo = QComboBox()
-            combo.setMinimumWidth(200)
-            label = f"{field_label} *" if required else field_label
-            form.addRow(QLabel(f"{label}:"), combo)
-            self.combo_widgets[field_key] = combo
+        # ── separator ─────────────────────────────────────────────
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(sep)
 
-        layout.addLayout(form)
+        # ── scrollable field rows ─────────────────────────────────
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+
+        self._fields_container = QWidget()
+        fields_layout = QVBoxLayout(self._fields_container)
+        fields_layout.setContentsMargins(0, 0, 0, 0)
+        fields_layout.setSpacing(2)
+
+        for field_key, field_label, required in ALL_FIELDS:
+            row = _FieldRow(field_key, field_label, required, self._on_row_changed)
+            self._rows.append(row)
+            fields_layout.addWidget(row)
+
+        fields_layout.addStretch()
+        scroll.setWidget(self._fields_container)
+        layout.addWidget(scroll)
+
         self.setLayout(layout)
 
-    def initializePage(self):  # noqa: N802
+    def initializePage(self) -> None:  # noqa: N802
         wizard = self.wizard()
         if not wizard or not hasattr(wizard, "file_info"):
             return
         file_info = wizard.file_info
-        if not file_info:
+        if not file_info or not file_info.get("path"):
             return
         path = file_info["path"]
         delimiter = file_info["delimiter"]
 
-        headers = []
+        headers: list[str] = []
         try:
             with open(path, newline="") as f:
                 reader = csv.reader(f, delimiter=delimiter)
@@ -200,16 +322,19 @@ class PageColumnMapping(QWizardPage):
             return
 
         blank = ["-- none --"] + headers
-        for combo in self.combo_widgets.values():
-            current = combo.currentText()
-            combo.clear()
-            combo.addItems(blank)
+        for row in self._rows:
+            current = row.combo.currentText()
+            row.combo.blockSignals(True)
+            row.combo.clear()
+            row.combo.addItems(blank)
             if current in blank:
-                combo.setCurrentText(current)
+                row.combo.setCurrentText(current)
+            row.combo.blockSignals(False)
+            row._update_status()
 
         self._refresh_templates()
 
-    def _refresh_templates(self):
+    def _refresh_templates(self) -> None:
         self.template_combo.blockSignals(True)
         self.template_combo.clear()
         self.template_combo.addItem("-- Manual mapping --")
@@ -217,7 +342,7 @@ class PageColumnMapping(QWizardPage):
             self.template_combo.addItem(tpl["name"])
         self.template_combo.blockSignals(False)
 
-    def _apply_template(self, index: int):
+    def _apply_template(self, index: int) -> None:
         name = self.template_combo.currentText()
         if name == "-- Manual mapping --":
             return
@@ -225,31 +350,44 @@ class PageColumnMapping(QWizardPage):
         if not tpl:
             return
         mapping = tpl.get("mapping", {})
-        for field_key, _, _ in ALL_FIELDS:
-            col_name = mapping.get(field_key)
+        for row in self._rows:
+            col_name = mapping.get(row.field_key)
             if col_name:
-                idx = self.combo_widgets[field_key].findText(col_name)
+                idx = row.combo.findText(col_name)
                 if idx >= 0:
-                    self.combo_widgets[field_key].setCurrentIndex(idx)
+                    row.combo.setCurrentIndex(idx)
 
-    def _save_template(self):
+    def _save_template(self) -> None:
         name, ok = QInputDialog.getText(self, "Save Template", "Template name:")
         if not ok or not name.strip():
             return
         mapping = {}
-        for field_key, _, _ in ALL_FIELDS:
-            val = self.combo_widgets[field_key].currentText()
+        for row in self._rows:
+            val = row.combo.currentText()
             if val and val != "-- none --":
-                mapping[field_key] = val
+                mapping[row.field_key] = val
         TemplateManager.save_template(name.strip(), mapping)
         self._refresh_templates()
 
+    def _on_row_changed(self) -> None:
+        """Called whenever any combo changes — updates wizard completeness."""
+        self.completeChanged.emit()
+
+    def isComplete(self) -> bool:  # noqa: N802
+        """Wizard can advance only when the required field is mapped."""
+        for row in self._rows:
+            if row.required:
+                text = row.combo.currentText()
+                if not text or text == "-- none --":
+                    return False
+        return True
+
     def get_mapping(self) -> dict[str, str]:
         mapping = {}
-        for field_key, _, _ in ALL_FIELDS:
-            val = self.combo_widgets[field_key].currentText()
+        for row in self._rows:
+            val = row.combo.currentText()
             if val and val != "-- none --":
-                mapping[field_key] = val
+                mapping[row.field_key] = val
         return mapping
 
 
@@ -471,7 +609,10 @@ class CsvImportWizard(QWizard):
         self.currentIdChanged.connect(self._on_page_change)
 
     def _on_page_change(self, page_id: int):
-        if page_id == 3:
+        if page_id == 1:
+            # Populate file_info before ColumnMapping page initializes
+            self.file_info = self.page_file.get_file_info()
+        elif page_id == 3:
             self._load_preview_points()
 
     def _load_preview_points(self):

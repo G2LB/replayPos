@@ -2,6 +2,10 @@
 
 GIS-based replay, analysis and reporting platform for mobile objects (vessels, vehicles, machinery).
 
+[![CI](https://github.com/anomalyco/replaypos/actions/workflows/ci.yml/badge.svg)](https://github.com/anomalyco/replaypos/actions/workflows/ci.yml)
+
+> 📖 [Development Log](DevLog.md) · [SQLite Schema & Patterns](docs/SQLite101.md)
+
 ## Features
 
 - **CSV Import** — Universal CSV Import Wizard with column mapping and reusable templates
@@ -34,10 +38,29 @@ uv sync --dev
 uv run ruff check src/
 
 # Test
-uv run pytest
+uv run pytest   # → testresults_all.md (auto)
+
+# Update per-step test reports
+uv run python scripts/update_test_reports.py   # → testresults_stap{2,3,4}.md
 
 # Run
 uv run python -m replaypos
+```
+
+## Test Results
+
+### pytest results
+
+| Stap | Module | Tests | ✅ Passed | ❌ Failed |
+|------|--------|-------|-----------|-----------|
+| 2 | [Pydantic Models](testresults_stap2_models.md) | 23 | 23 | 0 |
+| 3 | [SQLite Database](testresults_stap3_database.md) | 13 | 13 | 0 |
+| 4 | [CSV Import](testresults_stap4_import.md) | 38 | 38 | 0 |
+| **Total** | | **74** | **74** | **0** |
+
+**Failed tests:** ✅ None — all 74 passed
+
+📊 [testresults_all.md](testresults_all.md)
 ```
 
 ## Architecture

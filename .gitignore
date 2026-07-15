@@ -28,6 +28,9 @@ projects/*
 # Logs
 *.log
 
+# Generated reports
+testresults*.md
+
 # Secrets
 .env
 *.key

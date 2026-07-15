@@ -38,3 +38,21 @@ Implemented all core Pydantic v2 models:
 - `Project` — Full project container met tracks, objects, events, chapters
 - 23 unit tests — all passing
 - Ruff lint — all checks passed
+
+## 2026-07-15 — MCP setup, CSV import wizard, CI & GitHub push
+
+- **MCP Server Setup** — Configured `opencode.jsonc` with two MCP servers:
+  - `filesystem` — local `@modelcontextprotocol/server-filesystem` for project file access
+  - `github` — local `@modelcontextprotocol/server-github` authenticated via `GITHUB_TOKEN`
+- **Project agent rules** (`AGENTS.md`) — Python 3.13, uv, Pydantic v2, SQLAlchemy 2.0, UTM-first policy
+- **CSV Import** (Stap 4) — Full import pipeline:
+  - `csv_importer.py` — Core parsing: `parse_float`, `parse_int`, `parse_zone`, delimiter detection, timestamp parsing
+  - `csv_wizard.py` — `CsvColumnMapper` (column-to-field mapping), `TrackPointBuilder` (raw row → `TrackPoint`), `CsvReader` (preview + full read)
+  - `csv_filter.py` — `FilterEngine` for stop detection (speed-based segmentation), chapter generation, data reduction estimation
+  - Templates: `dorsch_survey.json` + `gator_logger.json` reusable column mapping templates with `TemplateManager` (list/load/save/delete)
+- **Nerd Font icons** — `mapping/assets/icons.py` with `NerdIcon` enum (110+ icons), `ICON_MAP`, `get_icon()`, `get_marker_html()`, NERD_FONTS_CSS
+- **Navigation model fix** — COG/Heading validation changed from `lt=360.0` to `le=360.0` (inclusive upper bound)
+- **Test infrastructure** — Added `pytest-md` + `pytest-emoji` for Markdown test reports; auto-generates `testresults_all.md`
+- **CI/CD** — GitHub Actions workflow (`.github/workflows/ci.yml`) with Ruff lint + PyTest on push/PR
+- **38 CSV import tests** — all passing (74 total, all green)
+- **GitHub repo created** — `https://github.com/G2LB/replayPos` (public), `develop` branch pushed

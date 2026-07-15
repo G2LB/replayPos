@@ -1,0 +1,17 @@
+{
+  "name": "Gator Logger",
+  "description": "Gator GPS logger format (UTM, GPS quality, speed)",
+  "delimiter": ",",
+  "has_header": true,
+  "timestamp_format": "HH:MM:SS DD-MM-YYYY",
+  "mapping": {
+    "timestamp": "Log Time",
+    "utm_easting": "UTM Easting",
+    "utm_northing": "UTM Northing",
+    "utm_zone": "UTM Zone",
+    "speed": "GPS_SPEED",
+    "gps_accuracy": "GPS_ACCURACY",
+    "gps_satellites": "GPS_SATS",
+    "gps_fix_quality": "GPS_FIX"
+  }
+}

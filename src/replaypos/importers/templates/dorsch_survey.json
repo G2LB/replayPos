@@ -1,0 +1,21 @@
+{
+  "name": "Dorsch Survey",
+  "description": "Dorsch survey logging format (UTM, UKC, Tide, SOG, COG, Heading)",
+  "delimiter": ",",
+  "has_header": true,
+  "timestamp_format": "HH:MM:SS DD-MM-YYYY",
+  "mapping": {
+    "timestamp": "Log Time",
+    "utm_easting": "UTM Easting",
+    "utm_northing": "UTM Northing",
+    "utm_zone": "UTM Zone",
+    "sog": "SOG",
+    "cog": "COG",
+    "heading": "Heading",
+    "ukc_front": "UKC Front",
+    "ukc_aft": "UKC Aft",
+    "tide": "Tide",
+    "water_level": "GPS WL",
+    "elevation": "Z"
+  }
+}

@@ -13,6 +13,8 @@ from replaypos.models import Track
 _BG_COLOR = QColor("#1e1e2e")
 _TRACK_COLOR = QColor("#3b82f6")
 _PLAYHEAD_COLOR = QColor("#ef4444")
+_INTERVAL_COLOR = QColor("#64748b")
+_INTERVAL_ACTIVE_COLOR = QColor("#fbbf24")
 _CHAPTER_COLORS = [
     QColor("#22c55e"),
     QColor("#f59e0b"),
@@ -48,6 +50,8 @@ class TimelineWidget(QWidget):
         self._fraction: float = 0.0  # 0.0 – 1.0
         self._hover_frac: float | None = None
         self._dragging: bool = False
+        self._intervals: list[dict] = []           # 6-minute interval markers
+        self._current_interval_idx: int = -1       # index of active interval (-1 = none)
 
     # ── public API ────────────────────────────────────────────────
 
@@ -62,10 +66,23 @@ class TimelineWidget(QWidget):
         self._fraction = max(0.0, min(fraction, 1.0))
         self.update()
 
+    def load_intervals(self, intervals: list[dict]) -> None:
+        """Set 6-minute interval markers on the timeline."""
+        self._intervals = intervals or []
+        self._current_interval_idx = -1
+        self.update()
+
+    def set_current_interval(self, idx: int) -> None:
+        """Highlight the *idx*-th interval marker."""
+        self._current_interval_idx = idx
+        self.update()
+
     def clear(self) -> None:
         """Remove track data."""
         self._track = None
         self._fraction = 0.0
+        self._intervals.clear()
+        self._current_interval_idx = -1
         self.update()
 
     # ── mouse handling ────────────────────────────────────────────
@@ -143,6 +160,20 @@ class TimelineWidget(QWidget):
                 cw = max(2, int(bar_w * (f1 - f0)))
                 colour = _CHAPTER_COLORS[hash(ch.name or ch.chapter_type) % len(_CHAPTER_COLORS)]
                 painter.fillRect(cx, bar_y, cw, bar_h, colour)
+
+        # ── 6-minute interval markers ──────────────────────────
+        if self._intervals:
+            n_pts = max(len(self._track.points) - 1, 1)
+            iv_h = 7
+            iv_y = bar_y - iv_h - 1  # just above the bar
+            for i, iv in enumerate(self._intervals):
+                frac = iv["point_idx"] / n_pts
+                ix = bar_x0 + int(bar_w * frac)
+                if i == self._current_interval_idx:
+                    painter.setPen(QPen(_INTERVAL_ACTIVE_COLOR, 3))
+                else:
+                    painter.setPen(QPen(_INTERVAL_COLOR, 2))
+                painter.drawLine(ix, iv_y, ix, iv_y + iv_h)
 
         # ── track progress (played portion) ───────────────────────
         played_w = int(bar_w * self._fraction)

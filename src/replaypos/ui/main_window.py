@@ -286,6 +286,7 @@ class MainWindow(QMainWindow):
 
         self._playback.load_track(track)
         self._timeline_widget.load_track(track)
+        self._timeline_widget.load_intervals(self._interval_list)
         self._map_widget.load_intervals(self._interval_list)
         self._map_widget.reset_progress()
         if reload_map:
@@ -334,6 +335,7 @@ class MainWindow(QMainWindow):
             idx = self._playback.current_index
             if idx >= next_iv["point_idx"]:
                 self._map_widget.highlight_interval(next_iv["coords"])
+                self._timeline_widget.set_current_interval(self._current_interval_idx)
                 self._current_interval_idx += 1
 
         if self._current_track and self._current_track.points:
